@@ -3,150 +3,157 @@ from PIL import Image, ImageDraw
 import math
 import sys
 
-# ========== Constants ==========
+MIDI_FILES = sys.argv[1:-3]  # takes up to 4 voice midi files (haven't tested with more)
+yheight = int(sys.argv[-1])
+noteUnit = sys.argv[-2]
+filename = sys.argv[-3]
+OUTPUT_IMAGE = f"{filename}.png"
+
+extra_pixels_of_something = 244  # (don't touch this)
+
 PIXELS_PER_NOTE = 1
-LOWEST_NOTE = 42
-HIGHEST_NOTE = 78
-NOTE_RANGE = HIGHEST_NOTE - LOWEST_NOTE + 1
+NOTE_UNIT = int(noteUnit) / 16  
+LOWEST_NOTE = 42 # F#2 (the big fat pipe stacked all the way up)
+HIGHEST_NOTE = 78   # F#5 (skinny pipe at 1)
+NOTE_RANGE = 37
 BACKGROUND_COLOR = (255, 255, 255)
-REPEATER_MAX_DELAY = 4
-SPAN = 64
-SNAKE_JUMP_LENGTH = 7
 
 COLOR_MAP = {
-    0:  (173, 216, 230),  # C
-    1:  (0, 0, 139),      # C#
-    2:  (75, 0, 130),     # D
-    3:  (128, 0, 128),    # D#
-    4:  (255, 0, 255),    # E
-    5:  (255, 192, 203),  # F
-    6:  (255, 0, 0),      # F#
-    7:  (255, 165, 0),    # G
-    8:  (255, 255, 0),    # G#
-    9:  (0, 255, 0),      # A
-    10: (0, 128, 0),      # A#
-    11: (0, 255, 255),    # B
+    0:  (173, 216, 230),  # C - light blue
+    1:  (0, 0, 139),      # C# - dark blue
+    2:  (75, 0, 130),     # D - indigo
+    3:  (128, 0, 128),    # D# - purple
+    4:  (255, 0, 255),    # E - magenta
+    5:  (255, 192, 203),  # F - pink
+    6:  (255, 0, 0),      # F# - red
+    7:  (255, 165, 0),    # G - orange
+    8:  (255, 255, 0),    # G# - yellow
+    9:  (0, 255, 0),      # A - lime
+    10: (0, 128, 0),      # A# - green
+    11: (0, 255, 255),    # B - cyan
 }
 
-WOOL_COLORS = [
-    "light_blue_wool", "blue_wool", "blue_terracotta", "purple_wool", "magenta_wool",
-    "pink_wool", "red_wool", "orange_wool", "yellow_wool", "lime_wool", "green_wool", "cyan_wool"
-]
-
-# ========== Argument Parsing ==========
-MIDI_FILES = sys.argv[1:-3]
-filename = sys.argv[-3]
-note_unit = float(sys.argv[-2]) / 16
-voice_height = int(sys.argv[-1])
-
-OUTPUT_IMAGE = f"{filename}.png"
-OUTPUT_MCFUNC = f"{filename}.mcfunction"
-
-# ========== Parse MIDI ==========
 all_voices = []
-max_beat_time = 0
+max_time = 0
 
 for midi_path in MIDI_FILES:
     midi_data = pretty_midi.PrettyMIDI(midi_path)
     tempo = midi_data.get_tempo_changes()[1][0]
-    seconds_per_beat = 60.0 / tempo
+    spb = 60.0 / tempo
 
     for instrument in midi_data.instruments:
-        notes = [
-            (note.pitch, note.start / seconds_per_beat, note.end / seconds_per_beat)
-            for note in instrument.notes
-            if LOWEST_NOTE <= note.pitch <= HIGHEST_NOTE
-        ]
-        if notes:
-            max_beat_time = max(max_beat_time, max(end for _, _, end in notes))
-            all_voices.append(notes)
+        voice_notes = []
+        for note in instrument.notes:
+            if LOWEST_NOTE <= note.pitch <= HIGHEST_NOTE:
+                start_beat = note.start / spb
+                end_beat = note.end / spb
+                max_time = max(max_time, end_beat)
+                voice_notes.append((note.pitch, start_beat, end_beat))
+        if voice_notes:
+            all_voices.append(voice_notes)
 
-# ========== Generate Image ==========
-image_width = math.ceil(max_beat_time / note_unit)
+total_beats = max_time
+image_width = math.ceil(total_beats / NOTE_UNIT)
 image = Image.new('RGB', (image_width, NOTE_RANGE), BACKGROUND_COLOR)
 draw = ImageDraw.Draw(image)
 
-for voice in all_voices:
-    for pitch, start, end in voice:
-        x0 = int(start / note_unit)
-        x1 = int(end / note_unit)
+for notes in all_voices:
+    for pitch, start_beat, end_beat in notes:
+        x0 = int(start_beat / NOTE_UNIT)
+        x1 = int(end_beat / NOTE_UNIT)
         y = HIGHEST_NOTE - pitch
         color = COLOR_MAP[pitch % 12]
-        draw.rectangle([x0, y, x1 - 1, y], fill=color)
+        draw.rectangle([x0, (y), (x1 - 1), (y)], fill=color)
 
 image.save(OUTPUT_IMAGE)
-print(f"Image saved as {OUTPUT_IMAGE}")
+    
+print(f"whatever the fuck you've created has been spit out at {OUTPUT_IMAGE}")
 
-# ========== Generate .mcfunction ==========
+
+
+
+
+
 mcfunction_lines = []
 
-for voice_idx, notes in enumerate(all_voices):
-    y = 3 + voice_idx * voice_height
-    x_pos = 1
-    z_pos = 0
-    direction = 1
-    flip = False
-    pending_snake = False
-    stuck_oob = False
+
+for voice_index, voice_notes in enumerate(all_voices):
+    # Voice-local state
+    y = 3 + voice_index * int(sys.argv[-1])  # vertical stacking
+
+    xtrue = 1
+    ztrue = 0
+    flip_flop = False
     last_latch_z = -1
+    SPAN = 64
+    direction = 1
+    snake_pending = False
     first_note = True
-    last_tick = 0
+    stuck_oob = False
+    last_end_tick = 0
 
-    for pitch, start, end in notes:
-        start_tick = int(start / note_unit)
-        end_tick = int(end / note_unit)
 
-        # Fill gap before note
-        gap_ticks = max(0, (start_tick - last_tick) // 2)
+
+    for pitch, start_beat, end_beat in voice_notes:
+        x0 = int(start_beat / NOTE_UNIT)
+        x1 = int(end_beat / NOTE_UNIT)
+
+        # Fill silence before this note, if needed
+        gap_ticks = max(0, int((x0 - last_end_tick) / 2))
         while gap_ticks > 0:
-            delay = min(REPEATER_MAX_DELAY, gap_ticks)
-            mcfunction_lines += [
-                f"setblock ~{x_pos} ~{y - 1} ~{z_pos} stone",
-                f"setblock ~{x_pos} ~{y} ~{z_pos} repeater[facing={'west' if direction == 1 else 'east'},delay={delay}]"
-            ]
-            if last_latch_z != -1:
-                mcfunction_lines += [
-                    f"setblock ~{x_pos} ~{y - 1} ~{last_latch_z} stone",
-                    f"setblock ~{x_pos} ~{y} ~{last_latch_z} redstone_wire"
-                ]
-            x_pos += direction
+            delay = min(4, gap_ticks)
+
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{ztrue} stone")
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{ztrue} repeater[facing={'west' if direction == 1 else 'east'},delay={delay}]")
+
+            if last_latch_z is not None:
+                mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{last_latch_z} stone")
+                mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{last_latch_z} redstone_wire")
+
+            xtrue += direction
             gap_ticks -= delay
 
-        ticks = max(1, int((end - start) / note_unit / 2))
+        note_duration_beats = end_beat - start_beat
+        total_ticks = max(1, int((note_duration_beats / NOTE_UNIT) / 2))
+        
+        # Only snake when truly at the end of a row, and not right after a jump
+        if not first_note and not snake_pending and not stuck_oob and (xtrue >= SPAN or xtrue <= 0):        
+            snake_pending = True
+            stuck_oob = True  # Prevent re-triggering out of bounds
+            direction *= -1  # Flip X direction
 
-        if not first_note and not pending_snake and not stuck_oob and (x_pos >= SPAN or x_pos <= 0):
-            pending_snake = True
-            stuck_oob = True
-            direction *= -1
+        if snake_pending:
+            # Build a jump bridge at current xtrue
+            for dz in range(7):
+                mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{ztrue + dz - 1} stone")
+                mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{ztrue + dz - 1} redstone_wire")
+            xtrue += direction
+            ztrue += 5
+            snake_pending = False
 
-        if pending_snake:
-            for dz in range(SNAKE_JUMP_LENGTH):
-                dz_offset = dz - 1
-                mcfunction_lines += [
-                    f"setblock ~{x_pos} ~{y - 1} ~{z_pos + dz_offset} stone",
-                    f"setblock ~{x_pos} ~{y} ~{z_pos + dz_offset} redstone_wire"
-                ]
-            x_pos += direction
-            z_pos += 5
-            pending_snake = False
+        # AFTER jump is resolved, safely update Z reference
+        z = ztrue
 
-        if not (x_pos >= SPAN or x_pos <= 0):
+        if not (xtrue >= SPAN or xtrue <= 0):
             stuck_oob = False
 
-        # Latch and wire positions
-        latch_z = z_pos - 1 if not flip else z_pos + 1
-        wire_z = z_pos + 1 if not flip else z_pos - 1
-        latch_facing = "south" if not flip else "north"
+        # Determine latch/wire direction
+        latch_z = ztrue-1 if not flip_flop else ztrue + 1
+        latch_facing = "south" if not flip_flop else "north"
+        wire_z = ztrue+1 if not flip_flop else ztrue - 1  # opposite side
 
-        # Redstone line start
-        mcfunction_lines += [
-            f"setblock ~{x_pos} ~{y - 1} ~{z_pos} stone",
-            f"setblock ~{x_pos} ~{y} ~{z_pos} redstone_wire",
-            f"setblock ~{x_pos} ~{y - 1} ~{latch_z} stone",
-            f"setblock ~{x_pos} ~{y} ~{latch_z} create:powered_latch[facing={latch_facing}]"
-        ]
 
-        # Frequency blocks
+
+        # Redstone wire to start the line
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{z} stone")
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{z} redstone_wire")
+
+        # Latch + side wire + stones
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{latch_z} stone")
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{latch_z} create:powered_latch[facing={latch_facing}]")
+
+
+        # Determine frequency block based on octave
         if pitch < 54:
             octave_block = "minecraft:copper_block"
         elif pitch < 66:
@@ -154,53 +161,92 @@ for voice_idx, notes in enumerate(all_voices):
         else:
             octave_block = "minecraft:iron_block"
 
-        note_color = "minecraft:" + (
-            "white_wool" if pitch == 78 else WOOL_COLORS[pitch % 12]
+        # Determine pitch color block for Frequency 2
+        wool_color_map = [
+            "light_blue_wool",   # C
+            "blue_wool",         # C#
+            "blue_terracotta",   # D (indigo)
+            "purple_wool",       # D#
+            "magenta_wool",      # E
+            "pink_wool",         # F
+            "red_wool",          # F#
+            "orange_wool",       # G
+            "yellow_wool",       # G#
+            "lime_wool",         # A
+            "green_wool",        # A#
+            "cyan_wool"          # B
+        ]
+        note_color_block = f"minecraft:{wool_color_map[pitch % 12]}"
+        if pitch == 78:
+            note_color_block = "minecraft:white_wool"
+
+        # Place the Redstone Link two blocks offset from the redstone line (aligned with latch_z)
+        link_z = ztrue-2 if not flip_flop else ztrue + 2
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{link_z} stone")
+        mcfunction_lines.append(
+            f"setblock ~{xtrue} ~{y} ~{link_z} create:redstone_link[facing=up]{{"
+            f'FrequencyFirst:{{id:"{octave_block}",Count:1b}},'
+            f'FrequencyLast:{{id:"{note_color_block}",Count:1b}},'
+            f"Transmitting:1b}}"
         )
 
-        link_z = z_pos - 2 if not flip else z_pos + 2
-        mcfunction_lines += [
-            f"setblock ~{x_pos} ~{y - 1} ~{link_z} stone",
-            f"setblock ~{x_pos} ~{y} ~{link_z} create:redstone_link[facing=up]{{"
-            f'FrequencyFirst:{{id:"{octave_block}",Count:1b}},'
-            f'FrequencyLast:{{id:"{note_color}",Count:1b}},Transmitting:1b}}',
-            f"setblock ~{x_pos} ~{y - 1} ~{wire_z} stone",
-            f"setblock ~{x_pos} ~{y} ~{wire_z} redstone_wire"
-        ]
 
+
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{wire_z} stone")
+        mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{wire_z} redstone_wire")
+
+        # Track latch position for repeater-side wires
         last_latch_z = latch_z
-        flip = not flip
-        x_pos += direction
+        flip_flop = not flip_flop
+        xtrue += direction
 
-        # Place repeaters
-        while ticks > 0:
-            delay = min(REPEATER_MAX_DELAY, ticks)
-            mcfunction_lines += [
-                f"setblock ~{x_pos} ~{y - 1} ~{z_pos} stone",
-                f"setblock ~{x_pos} ~{y} ~{z_pos} repeater[facing={'west' if direction == 1 else 'east'},delay={delay}]",
-                f"setblock ~{x_pos} ~{y - 1} ~{last_latch_z} stone",
-                f"setblock ~{x_pos} ~{y} ~{last_latch_z} redstone_wire"
-            ]
-            x_pos += direction
-            ticks -= delay
+        # Start placing repeaters
+        remaining_ticks = total_ticks
+        while remaining_ticks > 0:
+            delay = min(4, remaining_ticks)
 
+            # Repeater and supporting stone
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{z} stone")
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{z} repeater[facing={'west' if direction == 1 else 'east'},delay={delay}]")
+
+            # Side wire aligned with last latch, and its stone base
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{last_latch_z} stone")
+            mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{last_latch_z} redstone_wire")
+
+            xtrue += direction
+            remaining_ticks -= delay
         first_note = False
-        last_tick = end_tick
+        last_end_tick = x1
 
-    # Final signal cleanup
-    wire_z = z_pos + 1 if not flip else z_pos - 1
-    latch_z = z_pos - 1 if not flip else z_pos + 1
-    mcfunction_lines += [
-        f"setblock ~{x_pos} ~{y - 1} ~{z_pos} stone",
-        f"setblock ~{x_pos} ~{y} ~{z_pos} redstone_wire",
-        f"setblock ~{x_pos} ~{y - 1} ~{wire_z} stone",
-        f"setblock ~{x_pos} ~{y} ~{wire_z} redstone_wire",
-        f"setblock ~{x_pos} ~{y - 1} ~{latch_z} stone",
-        f"setblock ~{x_pos} ~{y} ~{latch_z} redstone_wire"
-    ]
+    # Determine latch/wire direction
+    latch_z = ztrue-1 if not flip_flop else ztrue + 1
+    latch_facing = "south" if not flip_flop else "north"
+    wire_z = ztrue+1 if not flip_flop else ztrue - 1  # opposite side
 
-# Write the function file
-with open(OUTPUT_MCFUNC, "w") as f:
+    # Redstone wire to start the line
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{z} stone")
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{z} redstone_wire")
+
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{wire_z} stone")
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{wire_z} redstone_wire")
+
+    # Track latch position for repeater-side wires
+    last_latch_z = latch_z
+    flip_flop = not flip_flop
+    xtrue += direction
+
+    # Side wire aligned with last latch, and its stone base
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{last_latch_z} stone")
+    mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{last_latch_z} redstone_wire")
+
+
+        
+
+        
+with open(f"{filename}.mcfunction", "w") as f:
     f.write("\n".join(mcfunction_lines))
 
-print(f"Redstone structure saved as {OUTPUT_MCFUNC}")
+print(f"Redstone structure exported as {filename}.mcfunction")
+
+
+
