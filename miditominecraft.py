@@ -9,8 +9,6 @@ noteUnit = sys.argv[-2]
 filename = sys.argv[-3]
 OUTPUT_IMAGE = f"{filename}.png"
 
-extra_pixels_of_something = 244  # (don't touch this)
-
 PIXELS_PER_NOTE = 1
 NOTE_UNIT = int(noteUnit) / 16  
 LOWEST_NOTE = 42 # F#2 (the big fat pipe stacked all the way up)
@@ -69,11 +67,6 @@ image.save(OUTPUT_IMAGE)
     
 print(f"whatever the fuck you've created has been spit out at {OUTPUT_IMAGE}")
 
-
-
-
-
-
 mcfunction_lines = []
 
 
@@ -91,8 +84,6 @@ for voice_index, voice_notes in enumerate(all_voices):
     first_note = True
     stuck_oob = False
     last_end_tick = 0
-
-
 
     for pitch, start_beat, end_beat in voice_notes:
         x0 = int(start_beat / NOTE_UNIT)
@@ -142,8 +133,6 @@ for voice_index, voice_notes in enumerate(all_voices):
         latch_facing = "south" if not flip_flop else "north"
         wire_z = ztrue+1 if not flip_flop else ztrue - 1  # opposite side
 
-
-
         # Redstone wire to start the line
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{z} stone")
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{z} redstone_wire")
@@ -151,7 +140,6 @@ for voice_index, voice_notes in enumerate(all_voices):
         # Latch + side wire + stones
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{latch_z} stone")
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{latch_z} create:powered_latch[facing={latch_facing}]")
-
 
         # Determine frequency block based on octave
         if pitch < 54:
@@ -189,8 +177,6 @@ for voice_index, voice_notes in enumerate(all_voices):
             f'FrequencyLast:{{id:"{note_color_block}",Count:1b}},'
             f"Transmitting:1b}}"
         )
-
-
 
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{wire_z} stone")
         mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{wire_z} redstone_wire")
@@ -239,14 +225,7 @@ for voice_index, voice_notes in enumerate(all_voices):
     mcfunction_lines.append(f"setblock ~{xtrue} ~{y - 1} ~{last_latch_z} stone")
     mcfunction_lines.append(f"setblock ~{xtrue} ~{y} ~{last_latch_z} redstone_wire")
 
-
-        
-
-        
 with open(f"{filename}.mcfunction", "w") as f:
     f.write("\n".join(mcfunction_lines))
 
 print(f"Redstone structure exported as {filename}.mcfunction")
-
-
-
