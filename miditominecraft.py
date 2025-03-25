@@ -65,7 +65,7 @@ for notes in all_voices:
 
 image.save(OUTPUT_IMAGE)
     
-print(f"whatever the fuck you've created has been spit out at {OUTPUT_IMAGE}")
+print(f"The piano roll test image has been output at {OUTPUT_IMAGE}")
 
 mcfunction_lines = []
 
