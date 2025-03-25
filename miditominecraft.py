@@ -82,7 +82,7 @@ for voice_index, voice_notes in enumerate(all_voices):
     direction = 1
     snake_pending = False
     first_note = True
-    stuck_oob = False
+    stuck_oob = False # stuck out of bounds
     last_end_tick = 0
 
     for pitch, start_beat, end_beat in voice_notes:
