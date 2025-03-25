@@ -5,7 +5,8 @@ Run the script from the terminal with the arguments: (string) MIDI file path, (s
 
 The script will output 2 files, a .png file and a .mcfunction file. The .png file shows a color-coded piano-roll style representation of the midi, clamped within the 37-note range. Each pixel along the X-axis represents 1 tick of in-game time; each pixel on the Y-axis represents one semitone, from F#2 at the bottom to F#5 at the top. USE THIS IMAGE to check if it appears the midi has been converted correctly; if the image is not correct, the structure in game will not be, either.
 
-The script will also output a .mcfunction file, which can be executed as part of a custom datapack. Templates are readily available online, but the basic structure of a datapack is something like:
+The script will also output a .mcfunction file, which can be executed as part of a custom datapack, placed in the datapack folder of a Minecraft save. Templates are readily available online, but the basic structure of a datapack is something like:
+
 
 <datapack_name>/   # The name of your datapack
 
